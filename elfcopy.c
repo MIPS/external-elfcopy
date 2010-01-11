@@ -1703,6 +1703,14 @@ static size_t do_update_dyn_entry_address(Elf *elf,
     INFO("%#0*llx",
          gelf_getclass (elf) == ELFCLASS32 ? 10 : 18,
          dyn->d_un.d_val);
+
+    /* If the old value is zero */
+    if (dyn->d_un.d_val == 0) {
+	if (newline)
+	    INFO("\n");
+	return 0;
+    }
+
     for (scnidx = 1; scnidx < shdr_info_len; scnidx++) {
         if (shdr_info[scnidx].old_shdr.sh_addr == dyn->d_un.d_ptr) {
             if (shdr_info[scnidx].idx > 0) {
@@ -1749,7 +1757,9 @@ static void update_dyn_entry_address_and_size(Elf *elf, Ebl *oldebl,
     size_t scnidx = do_update_dyn_entry_address(elf, dyn,
                                                 shdr_info, shdr_info_len,
                                                 0);
-    if (scnidx) {
+    if (scnidx == 0) {
+	dyn_size_entries[dyn_entry_idx] = -1;
+    } else {
         char buf[64];
         INFO(" (affects tag %s)",
              ebl_dynamic_tag_name(oldebl, dyn_entry_idx,
@@ -1981,7 +1991,11 @@ static void adjust_dynamic_segment_offsets(Elf *elf, Ebl *oldebl,
         case DT_STRSZ:    /* DT_STRTAB */
         case DT_RELSZ:    /* DT_REL */
         case DT_RELASZ:   /* DR_RELA */
-            if (dyn_size_entries[dyn->d_tag] == 0) {
+	    if (dyn_size_entries[dyn->d_tag] == -1) {
+		INFO("%lld (bytes) (updating to %lld bytes\n",
+		     dyn->d_un.d_val, 0);
+		dyn->d_un.d_val = 0;
+	    } else if (dyn_size_entries[dyn->d_tag] == 0) {
                 /* We have not yet found the new size for this entry, so we
                    save the index of the dynamic entry in the dyn_size_entries[]
                    array.  When we find the section affecting this field (in
