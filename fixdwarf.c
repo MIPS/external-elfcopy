@@ -573,5 +573,33 @@ static void byte_set_big_endian (unsigned char *field __attribute__((unused)),
                                  int size __attribute__((unused)),
                                  dwarf_vma val __attribute__((unused)))
 {
-    FAILIF(1, "Not implemented.\n");
+    switch (size) {
+    case 1:
+        FAILIF(val > 0xFF,
+               "Attempting to set value 0x%lx to %d-bit integer!\n",
+               val, size*8);
+        *((uint8_t *)field) = (uint8_t)val;
+        break;
+    case 2:
+        FAILIF(val > 0xFFFF,
+               "Attempting to set value 0x%lx to %d-bit integer!\n",
+               val, size*8);
+        field[0] = (uint8_t)(val >> 8);
+        field[1] = (uint8_t)val;
+        break;
+    case 4:
+#if 0
+		// this will signal false negatives when running on a 64 bit system.
+        FAILIF(val > 0xFFFFFFFF,
+               "Attempting to set value 0x%lx to %d-bit integer!\n",
+               val, size*8);
+#endif
+        field[0] = (uint8_t)(val >> 23);
+        field[1] = (uint8_t)(val >> 16);
+        field[2] = (uint8_t)(val >> 8);
+        field[3] = (uint8_t)val;
+        break;
+    default:
+        FAILIF(1, "Unhandled data length: %d\n", size);
+    }
 }
