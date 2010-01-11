@@ -606,7 +606,38 @@ void adjust_elf(Elf *elf, const char *elf_name,
                     visited_dynsym = shdr_info[cnt].shdr.sh_type == SHT_DYNSYM;
 #endif
                 } /* if it's a symbol table... */
-                else if (shdr_info[cnt].shdr.sh_type == SHT_DYNAMIC) {
+	    }
+
+	    /* Set the section header in the new file. There cannot be any
+	       overflows. */
+	    INFO("\t\tupdating section header (size %lld)\n",
+		 shdr_info[cnt].shdr.sh_size);
+
+	    FAILIF(!gelf_update_shdr(scn, &shdr_info[cnt].shdr),
+		   "Could not update section header for section %s!\n",
+		   shdr_info[cnt].name);
+	} /* if (shdr_info[cnt].idx > 0) */
+	else
+	  INFO("\t%03d: not updating section %s, it will be discarded.\n",
+	       cnt, shdr_info[cnt].name);
+    } /* for (cnt = 1; cnt < shdr_info_len; ++cnt) */
+
+    for (cnt = 1; cnt < shdr_info_len; ++cnt) {
+	if (shdr_info[cnt].idx > 0) {
+	    INFO("\t%03d: Finally updating section %s (index %d, address %lld offset %lld, size %lld, alignment %d)...\n",
+		 cnt,
+		 (shdr_info[cnt].name ?: "(no name)"),
+		 shdr_info[cnt].idx,
+		 shdr_info[cnt].shdr.sh_addr,
+		 shdr_info[cnt].shdr.sh_offset,
+		 shdr_info[cnt].shdr.sh_size,
+		 shdr_info[cnt].shdr.sh_addralign);
+
+	    scn = shdr_info[cnt].newscn;
+	    ASSERT(scn != NULL);
+	    ASSERT(scn == elf_getscn(newelf, shdr_info[cnt].idx));
+	    if (sections_dropped_or_rearranged || (sym_filter != NULL)) {
+		if (shdr_info[cnt].shdr.sh_type == SHT_DYNAMIC) {
                     /* We get here either when we drop some sections, or
                        when we are dropping symbols.  If we are not dropping
                        symbols, then the dynamic-symbol-table and its strings
@@ -663,21 +694,9 @@ void adjust_elf(Elf *elf, const char *elf_name,
 #endif
                     }
                 }
-            }
-
-            /* Set the section header in the new file. There cannot be any
-               overflows. */
-            INFO("\t\tupdating section header (size %lld)\n",
-                 shdr_info[cnt].shdr.sh_size);
-
-            FAILIF(!gelf_update_shdr (scn, &shdr_info[cnt].shdr),
-                   "Could not update section header for section %s!\n",
-                   shdr_info[cnt].name);
-        } /* if (shdr_info[cnt].idx > 0) */
-        else INFO("\t%03d: not updating section %s, it will be discarded.\n",
-                  cnt,
-                  shdr_info[cnt].name);
-    } /* for (cnt = 1; cnt < shdr_info_len; ++cnt) */
+	    }
+	}
+    }
 
     /* Now, if we removed some symbols and thus modified the symbol table,
        we need to update the hash table, the relocation sections that use these
@@ -1495,8 +1514,15 @@ static void update_relocations_section_offsets(Elf *newelf __attribute((unused))
             FAILIF_LIBELF(gelf_getrel (d, relidx, &rel_mem) == NULL,
                           gelf_getrel);
 
+#if defined(ARCH_ARM)
             if (GELF_R_TYPE(rel_mem.r_info) == R_ARM_NONE)
                 continue;
+#elif defined(ARCH_MIPS)
+	    if (GELF_R_TYPE(rel_mem.r_info) == R_MIPS_NONE)
+		    continue;
+#else
+#error elfcopy only supported for MIPS and ARM architectures
+#endif
 
             range_t *old_range = find_range(old_section_ranges,
                                             rel_mem.r_offset);
